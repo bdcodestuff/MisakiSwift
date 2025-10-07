@@ -391,7 +391,68 @@ final public class EnglishG2P {
       return item
     }
   }
-   
+
+  /// Calculates word-level timestamps from TTS model duration predictions
+  /// - Parameters:
+  ///   - tokens: Array of MToken objects to populate with timestamps
+  ///   - predDur: Duration predictions from TTS model (one value per phoneme + BOS/EOS)
+  ///   - Note: Based on kokoro/pipeline.py:295-330. Durations are in frames at 40fps (24000 sample rate / 600).
+  ///         Division by 80 (= 40fps × 2) gives half-frame precision for splitting space durations.
+  public static func joinTimestamps(tokens: [MToken], predDur: [Int]) {
+    // MAGIC_DIVISOR converts half-frames to seconds: 80 = 40fps * 2
+    let MAGIC_DIVISOR = 80.0
+
+    guard !tokens.isEmpty, predDur.count >= 3 else {
+      // We expect at least 3: <bos>, token, <eos>
+      return
+    }
+
+    // Track 2 counts in half-frames: (left, right)
+    // This allows cutting space characters in half
+    // Offset by -3 frames from BOS token
+    var left = 2 * max(0, predDur[0] - 3)
+    var right = left
+
+    var i = 1  // Index into predDur (skip BOS)
+
+    for token in tokens {
+      if i >= predDur.count - 1 {
+        break
+      }
+
+      // Handle empty phoneme tokens (whitespace only)
+      if token.phonemes == nil || token.phonemes!.isEmpty {
+        if !token.whitespace.isEmpty {
+          i += 1
+          left = right + predDur[i]
+          right = left + predDur[i]
+          i += 1
+        }
+        continue
+      }
+
+      let j = i + token.phonemes!.count
+      if j >= predDur.count {
+        break
+      }
+
+      token.start_ts = Double(left) / MAGIC_DIVISOR
+
+      // Sum durations for all phonemes in this token
+      let tokenDur = predDur[i..<j].reduce(0, +)
+      let spaceDur = !token.whitespace.isEmpty ? predDur[j] : 0
+
+      // Update: left = right + (2 * token_dur) + space_dur
+      left = right + (2 * tokenDur) + spaceDur
+      token.end_ts = Double(left) / MAGIC_DIVISOR
+
+      // Update: right = left + space_dur
+      right = left + spaceDur
+
+      i = j + (!token.whitespace.isEmpty ? 1 : 0)
+    }
+  }
+
   // Turns the text into phonemes that can then be fed to text-to-speech (TTS) engine for converting to audio
   public func phonemize(text: String, performPreprocess: Bool = true) -> (String, [MToken]) {
     let pre: PreprocessTuple
