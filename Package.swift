@@ -25,7 +25,7 @@ let package = Package(
         .product(name: "MLXNN", package: "mlx-swift")
      ],
      resources: [
-      .copy("../../Resources/")
+      .copy("Resources")
      ]
     ),
     .testTarget(
