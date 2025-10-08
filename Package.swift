@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
   name: "MisakiSwift",
   platforms: [
-    .iOS(.v18), .macOS(.v15)
+    .iOS(.v16), .macOS(.v15)
   ],
   products: [
     .library(
